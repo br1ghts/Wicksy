@@ -44,7 +44,7 @@ async def on_ready():
     # restore state from DB for channel/message IDs
     import aiosqlite
 
-    async with aiosqlite.connect("candlekeeper.db") as db:
+    async with aiosqlite.connect("Wicksy.db") as db:
         cur = await db.execute(
             "SELECT value FROM settings WHERE key='watchlist_channel'"
         )

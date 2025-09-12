@@ -1,6 +1,6 @@
 import aiosqlite
 
-DB_FILE = "candlekeeper.db"
+DB_FILE = "Wicksy.db"
 
 
 async def init_db():
