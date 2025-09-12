@@ -60,7 +60,7 @@ async def upsert_watchlist_message():
 
     table_str = await build_watchlist_table(rows)
     embed = discord.Embed(
-        title="📋 CandleKeeper Watchlist",
+        title="📋 Wicksy Watchlist",
         description=table_str,
         color=discord.Color.green(),
     )
