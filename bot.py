@@ -10,6 +10,7 @@ from watchlist import (
     WATCHLIST_CHANNEL_ID,
     WATCHLIST_MESSAGE_ID,
 )
+from alerts import setup_alerts, alert_checker, ALERTS_CHANNEL_ID as ALERTS_CH_ID
 
 # from trades import setup_trades
 # from alerts import setup_alerts
@@ -49,6 +50,16 @@ async def on_ready():
         if row:
             globals()["WATCHLIST_MESSAGE_ID"] = int(row[0])
 
+        # Alerts channel (optional)
+        cur = await db.execute(
+            "SELECT value FROM settings WHERE key='alerts_channel'"
+        )
+        row = await cur.fetchone()
+        if row:
+            # Update the imported alias (module global in alerts)
+            import alerts as _alerts
+            _alerts.ALERTS_CHANNEL_ID = int(row[0])
+
     # sync commands for guild
     guild_obj = discord.Object(id=GUILD_ID)
     synced = await bot.tree.sync(guild=guild_obj)
@@ -59,11 +70,15 @@ async def on_ready():
         updater.start()
         print("🟢 Watchlist updater started")
 
+    if not alert_checker.is_running():
+        alert_checker.start()
+        print("🟢 Alert checker started")
+
 
 # Register features before running
 setup_watchlist(bot, GUILD_ID)
+setup_alerts(bot, GUILD_ID)
 # setup_trades(bot, GUILD_ID)
-# setup_alerts(bot, GUILD_ID)
 
 
 if __name__ == "__main__":
