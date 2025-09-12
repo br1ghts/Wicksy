@@ -37,6 +37,60 @@ async def build_watchlist_table(rows):
     return "```\n" + "\n".join(lines) + "\n```"
 
 
+async def upsert_watchlist_message():
+    """Create or update the watchlist message in the configured channel.
+
+    - Reads rows from DB
+    - Builds an embed table
+    - Edits existing message if we have the ID, otherwise sends a new one
+    - Persists the message ID in settings
+    """
+    global WATCHLIST_CHANNEL_ID, WATCHLIST_MESSAGE_ID, BOT_INSTANCE
+
+    if not BOT_INSTANCE or not WATCHLIST_CHANNEL_ID:
+        return False
+
+    async with aiosqlite.connect(DB_FILE) as db:
+        cur = await db.execute("SELECT symbol, type FROM watchlist")
+        rows = await cur.fetchall()
+
+    # If no symbols, leave (do not create/update a message)
+    if not rows:
+        return False
+
+    table_str = await build_watchlist_table(rows)
+    embed = discord.Embed(
+        title="📋 CandleKeeper Watchlist",
+        description=table_str,
+        color=discord.Color.green(),
+    )
+
+    channel = BOT_INSTANCE.get_channel(WATCHLIST_CHANNEL_ID)
+    if not channel:
+        return False
+
+    # Try to edit existing message if we have it
+    if WATCHLIST_MESSAGE_ID:
+        try:
+            msg = await channel.fetch_message(WATCHLIST_MESSAGE_ID)
+            await msg.edit(embed=embed)
+            return True
+        except Exception:
+            WATCHLIST_MESSAGE_ID = None
+
+    # Otherwise send a fresh one and persist the new ID
+    msg = await channel.send(embed=embed)
+    WATCHLIST_MESSAGE_ID = msg.id
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("watchlist_message", str(WATCHLIST_MESSAGE_ID)),
+        )
+        await db.commit()
+
+    return True
+
+
 def setup_watchlist(bot, guild_id):
     global BOT_INSTANCE
     BOT_INSTANCE = bot
@@ -57,9 +111,11 @@ def setup_watchlist(bot, guild_id):
                 ("watchlist_channel", str(channel.id)),
             )
             await db.commit()
+        # Try to render or update the message in the new channel immediately
         await interaction.response.send_message(
             f"✅ Watchlist channel set to {channel.mention}", ephemeral=True
         )
+        await upsert_watchlist_message()
 
     @group.command(name="add")
     async def add(interaction: discord.Interaction, symbol: str):
@@ -83,6 +139,8 @@ def setup_watchlist(bot, guild_id):
         await interaction.followup.send(
             f"🔍 Added `{saved_symbol}` as {asset_type}", ephemeral=True
         )
+        # Update the watchlist message if channel configured
+        await upsert_watchlist_message()
 
     # Autocomplete shows pretty labels but saves clean IDs/tickers
     @add.autocomplete("symbol")
@@ -105,20 +163,39 @@ def setup_watchlist(bot, guild_id):
     @group.command(name="remove")
     async def remove(interaction: discord.Interaction, symbol: str):
         await interaction.response.defer(ephemeral=True)
-        clean = normalize_symbol(symbol)
+        # Be flexible about case. Crypto IDs are typically lowercase, stocks uppercase.
+        # Use a case-insensitive delete to cover both.
+        clean = symbol.strip()
         async with aiosqlite.connect(DB_FILE) as db:
-            await db.execute("DELETE FROM watchlist WHERE symbol=?", (clean,))
+            await db.execute(
+                "DELETE FROM watchlist WHERE symbol = ? COLLATE NOCASE",
+                (clean,),
+            )
             await db.commit()
         await interaction.followup.send(f"❌ Removed {clean}", ephemeral=True)
+        await upsert_watchlist_message()
 
     @group.command(name="clear")
     async def clear(interaction: discord.Interaction):
-        global WATCHLIST_MESSAGE_ID
+        global WATCHLIST_MESSAGE_ID, WATCHLIST_CHANNEL_ID
         await interaction.response.defer(ephemeral=True)
         async with aiosqlite.connect(DB_FILE) as db:
             await db.execute("DELETE FROM watchlist")
             await db.commit()
+        # Try to delete the existing watchlist message in the channel, if present
+        if WATCHLIST_CHANNEL_ID and WATCHLIST_MESSAGE_ID and BOT_INSTANCE:
+            channel = BOT_INSTANCE.get_channel(WATCHLIST_CHANNEL_ID)
+            if channel:
+                try:
+                    msg = await channel.fetch_message(WATCHLIST_MESSAGE_ID)
+                    await msg.delete()
+                except Exception:
+                    pass
         WATCHLIST_MESSAGE_ID = None
+        # Clear message ID from settings as well
+        async with aiosqlite.connect(DB_FILE) as db:
+            await db.execute("DELETE FROM settings WHERE key='watchlist_message'")
+            await db.commit()
         await interaction.followup.send("🧹 Watchlist cleared.", ephemeral=True)
 
     @group.command(name="list")
@@ -126,46 +203,18 @@ def setup_watchlist(bot, guild_id):
         global WATCHLIST_CHANNEL_ID, WATCHLIST_MESSAGE_ID
         await interaction.response.defer(ephemeral=False)
 
-        async with aiosqlite.connect(DB_FILE) as db:
-            cur = await db.execute("SELECT symbol, type FROM watchlist")
-            rows = await cur.fetchall()
-
-        if not rows:
-            await interaction.followup.send("Empty watchlist.")
-            return
-
-        table_str = await build_watchlist_table(rows)
-        embed = discord.Embed(
-            title="📋 CandleKeeper Watchlist",
-            description=table_str,
-            color=discord.Color.green(),
-        )
-
+        # Ensure a channel is configured
         if not WATCHLIST_CHANNEL_ID:
             await interaction.followup.send("⚠️ Use `/watchlist setchannel` first.")
             return
 
-        channel = bot.get_channel(WATCHLIST_CHANNEL_ID)
-        if not channel:
-            await interaction.followup.send("⚠️ Channel not found.")
+        # Update or create the message and provide confirmation
+        updated = await upsert_watchlist_message()
+        if not updated:
+            await interaction.followup.send("Empty watchlist.")
             return
 
-        if WATCHLIST_MESSAGE_ID:
-            try:
-                msg = await channel.fetch_message(WATCHLIST_MESSAGE_ID)
-                await msg.edit(embed=embed)
-            except:
-                WATCHLIST_MESSAGE_ID = None
-        if not WATCHLIST_MESSAGE_ID:
-            msg = await channel.send(embed=embed)
-            WATCHLIST_MESSAGE_ID = msg.id
-            async with aiosqlite.connect(DB_FILE) as db:
-                await db.execute(
-                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                    ("watchlist_message", str(WATCHLIST_MESSAGE_ID)),
-                )
-                await db.commit()
-
+        channel = bot.get_channel(WATCHLIST_CHANNEL_ID)
         await interaction.followup.send(f"✅ Watchlist updated in {channel.mention}")
 
     bot.tree.add_command(group, guild=discord.Object(id=guild_id))
@@ -176,36 +225,4 @@ async def updater():
     global WATCHLIST_CHANNEL_ID, WATCHLIST_MESSAGE_ID, BOT_INSTANCE
     if not WATCHLIST_CHANNEL_ID or not BOT_INSTANCE:
         return
-    async with aiosqlite.connect(DB_FILE) as db:
-        cur = await db.execute("SELECT symbol, type FROM watchlist")
-        rows = await cur.fetchall()
-    if not rows:
-        return
-
-    table_str = await build_watchlist_table(rows)
-    embed = discord.Embed(
-        title="📋 CandleKeeper Watchlist",
-        description=table_str,
-        color=discord.Color.green(),
-    )
-
-    channel = BOT_INSTANCE.get_channel(WATCHLIST_CHANNEL_ID)
-    if not channel:
-        return
-
-    if WATCHLIST_MESSAGE_ID:
-        try:
-            msg = await channel.fetch_message(WATCHLIST_MESSAGE_ID)
-            await msg.edit(embed=embed)
-            return
-        except:
-            WATCHLIST_MESSAGE_ID = None
-
-    msg = await channel.send(embed=embed)
-    WATCHLIST_MESSAGE_ID = msg.id
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-            ("watchlist_message", str(WATCHLIST_MESSAGE_ID)),
-        )
-        await db.commit()
+    await upsert_watchlist_message()

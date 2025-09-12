@@ -31,16 +31,6 @@ async def on_ready():
     # make sure DB exists
     await init_db()
 
-    # sync commands for guild
-    guild_obj = discord.Object(id=GUILD_ID)
-    synced = await bot.tree.sync(guild=guild_obj)
-    print(f"🔗 Synced {len(synced)} guild slash commands to {GUILD_ID}")
-
-    # ✅ start background updater only once the bot is ready
-    if not updater.is_running():
-        updater.start()
-        print("🟢 Watchlist updater started")
-
     # restore state from DB for channel/message IDs
     import aiosqlite
 
@@ -58,6 +48,16 @@ async def on_ready():
         row = await cur.fetchone()
         if row:
             globals()["WATCHLIST_MESSAGE_ID"] = int(row[0])
+
+    # sync commands for guild
+    guild_obj = discord.Object(id=GUILD_ID)
+    synced = await bot.tree.sync(guild=guild_obj)
+    print(f"🔗 Synced {len(synced)} guild slash commands to {GUILD_ID}")
+
+    # ✅ start background updater after restoring state
+    if not updater.is_running():
+        updater.start()
+        print("🟢 Watchlist updater started")
 
 
 # Register features before running
