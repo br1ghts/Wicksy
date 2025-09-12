@@ -1,9 +1,9 @@
 import discord
 import aiosqlite
 from discord.ext import tasks
-from prices import normalize_symbol, get_crypto_price, get_stock_price
-from search import search_crypto, search_stock
-from db import DB_FILE
+from wicksy.prices import normalize_symbol, get_crypto_price, get_stock_price
+from wicksy.search import search_crypto, search_stock
+from wicksy.db import DB_FILE
 
 WATCHLIST_CHANNEL_ID = None
 WATCHLIST_MESSAGE_ID = None

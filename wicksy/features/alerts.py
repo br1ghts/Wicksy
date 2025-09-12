@@ -3,9 +3,9 @@ import discord
 import aiosqlite
 from discord.ext import tasks
 from typing import List
-from prices import normalize_symbol, get_crypto_price, get_stock_price
-from search import search_crypto, search_stock
-from db import DB_FILE
+from wicksy.prices import normalize_symbol, get_crypto_price, get_stock_price
+from wicksy.search import search_crypto, search_stock
+from wicksy.db import DB_FILE
 
 BOT_INSTANCE: discord.Client | None = None
 ALERTS_CHANNEL_ID: int | None = None  # optional: post alerts in a channel; otherwise DM

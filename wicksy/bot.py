@@ -1,19 +1,13 @@
+# wicksy/bot.py
 import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from db import init_db
-from watchlist import (
-    setup_watchlist,
-    updater,
-    WATCHLIST_CHANNEL_ID,
-    WATCHLIST_MESSAGE_ID,
-)
-from alerts import setup_alerts, alert_checker, ALERTS_CHANNEL_ID as ALERTS_CH_ID
-
-# from trades import setup_trades
-# from alerts import setup_alerts
+from wicksy.db import init_db
+from wicksy.features.watchlist import setup_watchlist, updater
+from wicksy.features.alerts import setup_alerts, alert_checker
+import aiosqlite
 
 # Load environment variables
 load_dotenv()
@@ -33,31 +27,32 @@ async def on_ready():
     await init_db()
 
     # restore state from DB for channel/message IDs
-    import aiosqlite
-
-    async with aiosqlite.connect("Wicksy.db") as db:
+    async with aiosqlite.connect("data/Wicksy.db") as db:  # ✅ fixed path
+        # Watchlist
         cur = await db.execute(
             "SELECT value FROM settings WHERE key='watchlist_channel'"
         )
         row = await cur.fetchone()
         if row:
-            globals()["WATCHLIST_CHANNEL_ID"] = int(row[0])
+            import wicksy.features.watchlist as _watchlist
+
+            _watchlist.WATCHLIST_CHANNEL_ID = int(row[0])
 
         cur = await db.execute(
             "SELECT value FROM settings WHERE key='watchlist_message'"
         )
         row = await cur.fetchone()
         if row:
-            globals()["WATCHLIST_MESSAGE_ID"] = int(row[0])
+            import wicksy.features.watchlist as _watchlist
 
-        # Alerts channel (optional)
-        cur = await db.execute(
-            "SELECT value FROM settings WHERE key='alerts_channel'"
-        )
+            _watchlist.WATCHLIST_MESSAGE_ID = int(row[0])
+
+        # Alerts
+        cur = await db.execute("SELECT value FROM settings WHERE key='alerts_channel'")
         row = await cur.fetchone()
         if row:
-            # Update the imported alias (module global in alerts)
-            import alerts as _alerts
+            import wicksy.features.alerts as _alerts
+
             _alerts.ALERTS_CHANNEL_ID = int(row[0])
 
     # sync commands for guild
@@ -65,7 +60,7 @@ async def on_ready():
     synced = await bot.tree.sync(guild=guild_obj)
     print(f"🔗 Synced {len(synced)} guild slash commands to {GUILD_ID}")
 
-    # ✅ start background updater after restoring state
+    # ✅ start background loops
     if not updater.is_running():
         updater.start()
         print("🟢 Watchlist updater started")
@@ -75,13 +70,16 @@ async def on_ready():
         print("🟢 Alert checker started")
 
 
-# Register features before running
+# Register features
 setup_watchlist(bot, GUILD_ID)
 setup_alerts(bot, GUILD_ID)
-# setup_trades(bot, GUILD_ID)
 
 
-if __name__ == "__main__":
+def main():
     if not TOKEN:
         raise ValueError("❌ DISCORD_TOKEN not set in .env")
     bot.run(TOKEN)
+
+
+if __name__ == "__main__":
+    main()
