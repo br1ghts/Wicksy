@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Wicksy Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Wicksy Dashboard</h1>
+
+    <section>
+        <h2>Watchlist</h2>
+        <table>
+            <tr><th>Symbol</th><th>Type</th></tr>
+            {% for item in watchlist %}
+            <tr>
+                <td>{{ item.symbol }}</td>
+                <td>{{ item.type }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="2">No entries</td></tr>
+            {% endfor %}
+        </table>
+    </section>
+
+    <section>
+        <h2>Alerts</h2>
+        <ul>
+            {% for alert in alerts %}
+            <li>{{ alert.symbol }} {{ alert.direction }} {{ alert.target }}</li>
+            {% else %}
+            <li>No alerts</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section>
+        <h2>Trades</h2>
+        <table>
+            <tr><th>Symbol</th><th>Entry</th><th>SL</th><th>TP</th><th>Notes</th></tr>
+            {% for trade in trades %}
+            <tr>
+                <td>{{ trade.symbol }}</td>
+                <td>{{ trade.entry }}</td>
+                <td>{{ trade.sl }}</td>
+                <td>{{ trade.tp }}</td>
+                <td>{{ trade.notes }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No trades</td></tr>
+            {% endfor %}
+        </table>
+    </section>
+</body>
+</html>
