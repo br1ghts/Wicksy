@@ -72,6 +72,25 @@ Want to contribute?
 - Create a feature branch
 - Submit a pull request
 
+### Running the API and Dashboard
+
+```bash
+uvicorn run_api:app --reload
+```
+
+Visit http://127.0.0.1:8000/ to view the Jinja2 dashboard which shows the current watchlist, alerts and trades.
+
+### Running the React Frontend
+
+A placeholder React app lives in `frontend/`. It can be replaced with a full create-react-app setup.
+
+```bash
+cd frontend
+npm start
+```
+
+The React app fetches data from the FastAPI endpoints `/watchlist`, `/alerts` and `/trades`.
+
 ---
 
 ## 📜 License

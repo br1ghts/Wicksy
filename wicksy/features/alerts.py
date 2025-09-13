@@ -451,3 +451,24 @@ async def alert_checker():
                     "DELETE FROM alerts WHERE id=?", [(i,) for i in to_delete]
                 )
                 await db.commit()
+
+
+async def get_alerts() -> list[dict]:
+    """Return all active alerts."""
+    await _ensure_schema()
+    async with aiosqlite.connect(DB_FILE) as db:
+        cur = await db.execute(
+            "SELECT id, user_id, symbol, target, direction, paused FROM alerts"
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "id": row[0],
+            "user_id": row[1],
+            "symbol": row[2],
+            "target": row[3],
+            "direction": row[4],
+            "paused": bool(row[5]) if len(row) > 5 else False,
+        }
+        for row in rows
+    ]

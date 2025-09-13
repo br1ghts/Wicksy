@@ -226,3 +226,11 @@ async def updater():
     if not WATCHLIST_CHANNEL_ID or not BOT_INSTANCE:
         return
     await upsert_watchlist_message()
+
+
+async def get_watchlist() -> list[dict]:
+    """Return all symbols currently in the watchlist."""
+    async with aiosqlite.connect(DB_FILE) as db:
+        cur = await db.execute("SELECT symbol, type FROM watchlist")
+        rows = await cur.fetchall()
+    return [{"symbol": row[0], "type": row[1]} for row in rows]
